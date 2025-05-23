@@ -1,5 +1,4 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react'; // Pastikan useEffect diimpor
 import { useNavigate } from 'react-router-dom';
 import { Camera, Home, Play, Star, Download, Share } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,9 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 
 const TeensPage = () => {
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState(null);
+  const [activeFilter, setActiveFilter] = useState<{ id: string; name: string; emoji: string; description: string } | null>(null); // Tipe eksplisit untuk activeFilter
   const [isCapturing, setIsCapturing] = useState(false);
-  const videoRef = useRef(null);
+  const [stream, setStream] = useState<MediaStream | null>(null); // State untuk stream
+  const videoRef = useRef<HTMLVideoElement>(null); // Tipe eksplisit untuk videoRef
 
   const filters = [
     { id: 'fruit-crown', name: 'Fruit Crown', emoji: '👑', description: 'Wear a magical crown of fresh fruits!' },
@@ -41,19 +41,59 @@ const TeensPage = () => {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setStream(mediaStream);
       setIsCapturing(true);
     } catch (err) {
-      console.log('Camera access denied or not available');
+      console.error('Error accessing camera:', err); // Log error yang lebih detail
+      alert('Tidak dapat mengakses kamera. Mohon periksa izin kamera di browser Anda dan pastikan kamera tersedia.');
+      setIsCapturing(false);
+      setStream(null);
+    }
+  };
+
+  // useEffect untuk menangani assignment stream ke video element & cleanup
+  useEffect(() => {
+    if (isCapturing && stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+
+    // Fungsi cleanup untuk menghentikan stream ketika komponen unmount atau kamera dimatikan
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isCapturing, stream]); // Jalankan effect ini ketika isCapturing atau stream berubah
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setStream(null);
+    setIsCapturing(false);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
   const capturePhoto = () => {
+    if (!activeFilter) {
+      alert("Pilih filter terlebih dahulu!");
+      return;
+    }
     // Simulate photo capture with filter
-    alert(`📸 Amazing photo captured with ${activeFilter?.name}! In a real app, this would save your filtered photo.`);
+    alert(`📸 Foto keren diambil dengan filter ${activeFilter?.name}! Di aplikasi sungguhan, ini akan menyimpan fotomu.`);
+    // Untuk implementasi nyata, Anda bisa menggunakan canvas untuk mengambil frame dari video element
+    // const canvas = document.createElement('canvas');
+    // if (videoRef.current) {
+    //   canvas.width = videoRef.current.videoWidth;
+    //   canvas.height = videoRef.current.videoHeight;
+    //   canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+    //   const imageDataUrl = canvas.toDataURL('image/png');
+    //   // Lakukan sesuatu dengan imageDataUrl, misalnya download atau tampilkan
+    //   console.log(imageDataUrl);
+    // }
   };
 
   return (
@@ -106,11 +146,12 @@ const TeensPage = () => {
               <Card className="overflow-hidden shadow-2xl border-4 border-purple-300 animate-scale-in">
                 <CardContent className="p-0">
                   <div className="aspect-square bg-gradient-to-br from-purple-200 to-pink-200 flex items-center justify-center relative overflow-hidden">
-                    {isCapturing ? (
+                    {isCapturing && stream ? ( // Tampilkan video hanya jika isCapturing true DAN stream ada
                       <video
                         ref={videoRef}
                         autoPlay
                         playsInline
+                        muted // Penting untuk autoplay di beberapa browser
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -138,13 +179,20 @@ const TeensPage = () => {
                   </div>
                   
                   {isCapturing && (
-                    <div className="p-4 bg-white flex justify-center gap-4">
+                    <div className="p-4 bg-white flex flex-col sm:flex-row justify-center gap-4">
                       <Button
                         onClick={capturePhoto}
                         disabled={!activeFilter}
                         className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-full font-bold"
                       >
                         📸 Capture Magic!
+                      </Button>
+                      <Button
+                        onClick={stopCamera}
+                        variant="outline"
+                        className="border-red-500 text-red-500 hover:bg-red-50 px-6 py-2 rounded-full font-bold"
+                      >
+                        Stop Camera
                       </Button>
                     </div>
                   )}
@@ -166,7 +214,13 @@ const TeensPage = () => {
                         ? 'ring-4 ring-purple-400 bg-purple-50'
                         : 'hover:shadow-lg'
                     }`}
-                    onClick={() => setActiveFilter(filter)}
+                    onClick={() => {
+                        if (!isCapturing) {
+                            alert("Mulai kamera terlebih dahulu untuk memilih filter!");
+                            return;
+                        }
+                        setActiveFilter(filter);
+                    }}
                   >
                     <CardContent className="p-6 flex items-center gap-4">
                       <div className="text-4xl">{filter.emoji}</div>
